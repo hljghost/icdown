@@ -1,0 +1,50 @@
+name: Publicar
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: La etiqueta coincide con Cargo.toml
+        run: |
+          $v = (Select-String icopia\Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "La etiqueta ${{ github.ref_name }} no coincide con Cargo.toml ($v)" }
+          "VERSION=$v" >> $env:GITHUB_ENV
+      - name: Pruebas
+        run: |
+          python -m venv puente\.venv
+          puente\.venv\Scripts\pip install -r puente\requirements.txt
+          puente\.venv\Scripts\python -m pytest puente\tests -q
+          cargo test --manifest-path icopia\Cargo.toml
+      - name: Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Empaquetar
+        run: .\empaquetar.ps1
+      - name: Firmar
+        env:
+          ICOPY_CLAVE_FIRMA: ${{ secrets.ICOPY_CLAVE_FIRMA }}
+        run: cargo run --release --manifest-path icopia\Cargo.toml --example firmar -- "dist\iCopy-Setup-$env:VERSION.exe"
+      - name: Notas del CHANGELOG
+        run: |
+          $lineas = Get-Content CHANGELOG.md
+          $ini = [array]::IndexOf($lineas, ($lineas | Where-Object { $_.StartsWith("## [$env:VERSION]") } | Select-Object -First 1))
+          if ($ini -lt 0) { throw "CHANGELOG.md no tiene la sección [$env:VERSION]" }
+          $fin = $ini + 1
+          while ($fin -lt $lineas.Count -and -not $lineas[$fin].StartsWith("## [")) { $fin++ }
+          $lineas[($ini + 1)..($fin - 1)] | Where-Object { $_ -notmatch '^\[.+\]: http' } | Set-Content notas.md -Encoding utf8
+      - name: Crear la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $extra = @()
+          if ("${{ github.ref_name }}" -match '-') { $extra += "--prerelease" }
+          gh release create "${{ github.ref_name }}" "dist\iCopy-Setup-$env:VERSION.exe" "dist\iCopy-Setup-$env:VERSION.exe.sig" --title "iCopy $env:VERSION" --notes-file notas.md @extra

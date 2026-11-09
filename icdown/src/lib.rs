@@ -1,0 +1,23 @@
+//! icdown: copia iCloud Fotos al PC de forma verificada.
+pub mod bitacora;
+pub mod cerrojo;
+pub mod config;
+pub mod criterio;
+pub mod i18n;
+pub mod descarga;
+pub mod disco;
+pub mod energia;
+pub mod fuente;
+pub mod layout;
+pub mod modelo;
+pub mod motor;
+pub mod puente;
+pub mod registro;
+pub mod verificar;
+pub mod auditoria;
+pub mod liberar;
+pub mod progreso_liberar;
+pub mod planificador;
+pub mod bandeja;
+pub mod login;
+pub mod actualizar;

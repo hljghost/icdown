@@ -1,0 +1,7 @@
+icdown is a Linux / Omarchy port of iCopy by Z1Code.
+
+Upstream: https://github.com/Z1Code/iCopy (MIT)
+iCloud bridge based on icloudpd / pyicloud_ipd:
+https://github.com/icloud-photos-downloader/icloud_photos_downloader (MIT)
+
+Not affiliated with Apple.

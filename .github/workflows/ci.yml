@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: icopia
+      - name: Puente
+        run: |
+          python -m venv puente\.venv
+          puente\.venv\Scripts\pip install -r puente\requirements.txt
+          puente\.venv\Scripts\python -m pytest puente\tests -q
+      - name: Rust
+        run: |
+          cargo clippy --manifest-path icopia\Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path icopia\Cargo.toml
