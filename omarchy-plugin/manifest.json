@@ -1,21 +1,26 @@
 {
   "schemaVersion": 1,
-  "id": "ghost.icdown",
+  "id": "io.github.hljghost.icdown",
   "name": "icdown",
   "version": "1.0.0",
-  "author": "ghost",
+  "author": "hljghost",
   "license": "MIT",
-  "description": "iCloud Photos backup status for icdown: progress, copy now, open folder.",
+  "description": "iCloud Photos backup status for icdown: progress, copy now, open folder, sign in/out.",
   "kinds": [
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "Panel.qml"
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "icdown",
-    "description": "Backup progress for iCloud Photos (icdown)",
+    "description": "Backup progress for iCloud Photos via the icdown CLI",
     "category": "Files",
+    "aliases": [
+      "icloud",
+      "photos",
+      "backup"
+    ],
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {

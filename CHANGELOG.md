@@ -3,7 +3,8 @@
 ## [Sin publicar]
 
 ### Added
-- Omarchy bar plugin `ghost.icdown` (`omarchy-plugin/` + `scripts/install-plugin.sh`): progress, copy now, open folder, login, tray toggle
+- Marketplace plugin https://github.com/hljghost/omarchy-icdown-plugin (`io.github.hljghost.icdown`)
+- Omarchy bar plugin (legacy id `ghost.icdown`, migrated) (`omarchy-plugin/` + `scripts/install-plugin.sh`): progress, copy now, open folder, login, tray toggle
 
 ## [0.2.0] - 2026-11-09
 

@@ -77,16 +77,20 @@ o.launch_on_start("icdown-tray")
 
 ## Omarchy 插件
 
-状态栏小组件 `ghost.icdown`：显示备份进度，面板里可「立即备份 / 打开目录 / 登录 / 启停托盘」。
+状态栏小组件已单独做成官方市场格式仓库（根目录含 `manifest.json`）：
+
+**https://github.com/hljghost/omarchy-icdown-plugin**（id: `io.github.hljghost.icdown`）
 
 ```bash
+# 推荐：按官方方式安装
+omarchy plugin add https://github.com/hljghost/omarchy-icdown-plugin.git --enable
+
+# 或从本仓库开发副本安装
 ./scripts/install-plugin.sh
-# 或手动：
-# cp -a omarchy-plugin ~/.config/omarchy/plugins/ghost.icdown
-# omarchy plugin enable ghost.icdown --section right
 ```
 
-源码在仓库的 `omarchy-plugin/`（因完整仓库含 Rust 工程，不能直接用 `omarchy plugin add <repo-url>`；请用上面的安装脚本）。改插件文件后会热重载；也可 `omarchy-shell shell rescanPlugins`。
+上架说明见 [Develop](https://plugins.omarchy.org/develop.html) / [Publish](https://plugins.omarchy.org/publish.html)。提交表单：
+https://github.com/omacom/omarchy-plugin-marketplace/issues/new?template=submit-plugin.yml
 
 ## 开发
 
