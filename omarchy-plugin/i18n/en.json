@@ -16,6 +16,7 @@
   "icdown.copyNow": "Copy now",
   "icdown.openFolder": "Open photo folder",
   "icdown.login": "Sign in (terminal)",
+  "icdown.logout": "Sign out",
   "icdown.startTray": "Start tray",
   "icdown.stopTray": "Stop tray",
   "icdown.destino": "Folder: %1",

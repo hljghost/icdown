@@ -123,6 +123,11 @@ Panel {
     Qt.callLater(root.refresh)
   }
 
+  function logoutAccount() {
+    if (!logoutProc.running)
+      logoutProc.running = true
+  }
+
   onOpenedChanged: {
     if (opened)
       root.refresh()
@@ -355,8 +360,17 @@ Panel {
             text: strings.t("icdown.login")
             iconText: "󰌾"
             bordered: true
-            enabled: root.installed
+            enabled: root.installed && !root.loggedIn
             onClicked: root.loginTerminal()
+          }
+
+          Button {
+            width: parent.width
+            text: strings.t("icdown.logout")
+            iconText: "󰍃"
+            bordered: true
+            enabled: root.installed && root.loggedIn && !root.running
+            onClicked: root.logoutAccount()
           }
 
           Button {
@@ -387,6 +401,18 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.parseStatus(text)
+    }
+  }
+
+  Process {
+    id: logoutProc
+    command: ["python3", root.statusScript, "--logout"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.parseStatus(text)
+        root.refresh()
+      }
     }
   }
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only status for the ghost.icdown Omarchy bar plugin."""
+"""Status / logout helper for the ghost.icdown Omarchy bar plugin."""
 from __future__ import annotations
 
+import argparse
 import fcntl
 import json
 import os
@@ -153,7 +154,74 @@ def gb(n: int) -> float:
     return round(n / 1e9, 1)
 
 
-def main() -> None:
+def save_config(cfg: dict) -> None:
+    path = config_dir() / "config.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def clear_session_files() -> int:
+    sesion = config_dir() / "sesion"
+    removed = 0
+    if not sesion.exists():
+        return removed
+    for path in sesion.iterdir():
+        try:
+            if path.is_file() or path.is_symlink():
+                path.unlink(missing_ok=True)
+                removed += 1
+            elif path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def stop_tray() -> None:
+    try:
+        subprocess.run(
+            ["systemctl", "--user", "stop", "icdown-tray.service"],
+            check=False,
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        subprocess.run(["pkill", "-x", "icdown-tray"], check=False, capture_output=True, timeout=3)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def do_logout() -> dict:
+    """Clear iCloud session + Apple ID. Keeps destino / photos / registro."""
+    stop_tray()
+    removed = clear_session_files()
+    cfg = load_config()
+    had_id = bool(cfg.get("apple_id"))
+    cfg.pop("apple_id", None)
+    if cfg or (config_dir() / "config.json").exists():
+        save_config(cfg)
+    log = config_dir() / "puente.log"
+    try:
+        if log.exists():
+            log.write_text("", encoding="utf-8")
+    except OSError:
+        pass
+    return {
+        "ok": True,
+        "action": "logout",
+        "cleared_apple_id": had_id,
+        "session_files_removed": removed,
+        "logged_in": False,
+        "phase": "need_login",
+    }
+
+
+def emit_status() -> dict:
     cfg = load_config()
     destino_raw = cfg.get("destino") or ""
     destino = Path(str(destino_raw)).expanduser() if destino_raw else None
@@ -198,7 +266,7 @@ def main() -> None:
     else:
         phase = "behind"
 
-    payload = {
+    return {
         "ok": True,
         "installed": installed,
         "logged_in": logged_in,
@@ -217,6 +285,16 @@ def main() -> None:
         "bytes_verificados_gb": gb(stats["bytes_verificados"]),
         "ultimo_listado": stats["ultimo_listado"],
     }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--logout", action="store_true")
+    args, _unknown = ap.parse_known_args()
+    if args.logout:
+        payload = do_logout()
+    else:
+        payload = emit_status()
     print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 
 

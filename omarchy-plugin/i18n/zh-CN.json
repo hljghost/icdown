@@ -16,6 +16,7 @@
   "icdown.copyNow": "立即备份",
   "icdown.openFolder": "打开照片目录",
   "icdown.login": "登录（终端）",
+  "icdown.logout": "退出账号",
   "icdown.startTray": "启动托盘",
   "icdown.stopTray": "停止托盘",
   "icdown.destino": "目录：%1",
