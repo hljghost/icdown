@@ -75,6 +75,19 @@ o.launch_on_start("icdown-tray")
 
 （若已 `systemctl --user enable icdown-tray.service`，通常不必再写 autostart。）
 
+## Omarchy 插件
+
+状态栏小组件 `ghost.icdown`：显示备份进度，面板里可「立即备份 / 打开目录 / 登录 / 启停托盘」。
+
+```bash
+./scripts/install-plugin.sh
+# 或手动：
+# cp -a omarchy-plugin ~/.config/omarchy/plugins/ghost.icdown
+# omarchy plugin enable ghost.icdown --section right
+```
+
+源码在仓库的 `omarchy-plugin/`（因完整仓库含 Rust 工程，不能直接用 `omarchy plugin add <repo-url>`；请用上面的安装脚本）。改插件文件后会热重载；也可 `omarchy-shell shell rescanPlugins`。
+
 ## 开发
 
 ```bash

@@ -1,5 +1,10 @@
 # Changelog
 
+## [Sin publicar]
+
+### Added
+- Omarchy bar plugin `ghost.icdown` (`omarchy-plugin/` + `scripts/install-plugin.sh`): progress, copy now, open folder, login, tray toggle
+
 ## [0.2.0] - 2026-11-09
 
 ### Added

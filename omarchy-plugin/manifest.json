@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "ghost.icdown",
+  "name": "icdown",
+  "version": "1.0.0",
+  "author": "ghost",
+  "license": "MIT",
+  "description": "iCloud Photos backup status for icdown: progress, copy now, open folder.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "icdown",
+    "description": "Backup progress for iCloud Photos (icdown)",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 15
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 600,
+        "step": 5,
+        "defaultValue": 15
+      }
+    ]
+  }
+}
