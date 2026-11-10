@@ -12,8 +12,16 @@ __pycache__/
 *.db-wal
 *.db-shm
 *.log
+*.session
 config.json
 sesion/
+**/sesion/
 borrados.csv
+restaurados.csv
+plan_liberar.csv
+# Never commit real credentials / local runtime state
+.env
+.env.*
+secrets/
 docs/social/_panel_*.png
 dist/
