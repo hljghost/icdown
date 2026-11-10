@@ -34,8 +34,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pyicloud_ipd.asset_version import ITEM_TYPE_EXTENSIONS, AssetVersion
 from pyicloud_ipd.base import PyiCloudService
-from pyicloud_ipd.exceptions import (PyiCloudAPIResponseException, PyiCloudFailedLoginException,
-                                     PyiCloudServiceUnavailableException)
+from pyicloud_ipd.exceptions import (PyiCloudAPIResponseException, PyiCloudConnectionErrorException,
+                                     PyiCloudFailedLoginException, PyiCloudServiceUnavailableException)
 from pyicloud_ipd.item_type import AssetItemType
 from pyicloud_ipd.services.photos import PhotoAlbum, PhotoAsset, filename_with_fallback
 from pyicloud_ipd.version_size import AssetVersionSize, LivePhotoVersionSize
@@ -715,6 +715,19 @@ def main(argv: Optional[List[str]] = None) -> None:
             responder({"ok": False, "error": "sesion_caducada"})
         except Credenciales as e:
             responder({"ok": False, "error": "credenciales", "detalle": str(e)})
+        except PyiCloudConnectionErrorException as e:
+            traceback.print_exc()
+            # Suele ser proxy/TUN (Clash Verge Meta) cortando TLS hacia idmsa.apple.com.
+            responder({
+                "ok": False,
+                "error": "otro",
+                "detalle": (
+                    f"{type(e).__name__}: {e}. "
+                    "Comprueba la red o el proxy: prueba de nuevo, o en Clash Verge "
+                    "pon idmsa.apple.com / *.icloud.com / *.apple.com en DIRECT, "
+                    "o desactiva TUN un momento."
+                ),
+            })
         except PyiCloudAPIResponseException as e:
             if es_error_de_sesion(e):
                 responder({"ok": False, "error": "sesion_caducada"})
