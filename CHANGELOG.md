@@ -2,6 +2,9 @@
 
 ## [Sin publicar]
 
+### Fixed
+- iCloud session files stay private on disk: the directory is `0700`, and the session JSON (session token and trust token) plus cookies are `0600`, even when the umask is `022`
+
 ### Added
 - Marketplace plugin https://github.com/hljghost/omarchy-icdown-plugin (`io.github.hljghost.icdown`)
 - Omarchy bar plugin (legacy id `ghost.icdown`, migrated) (`omarchy-plugin/` + `scripts/install-plugin.sh`): progress, copy now, open folder, login, tray toggle
