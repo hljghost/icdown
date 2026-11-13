@@ -16,7 +16,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: icopia
+          workspaces: icdown
       - name: Puente
         run: |
           python -m venv puente\.venv
@@ -24,5 +24,5 @@ jobs:
           puente\.venv\Scripts\python -m pytest puente\tests -q
       - name: Rust
         run: |
-          cargo clippy --manifest-path icopia\Cargo.toml --all-targets -- -D warnings
-          cargo test --manifest-path icopia\Cargo.toml
+          cargo clippy --manifest-path icdown\Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path icdown\Cargo.toml
