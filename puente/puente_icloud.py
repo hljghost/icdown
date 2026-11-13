@@ -26,6 +26,7 @@ import io
 import json
 import logging
 import os
+import stat
 import sys
 import time
 import traceback
@@ -69,6 +70,52 @@ def responder(obj: Dict[str, Any]) -> None:
 # pyicloud_ipd reescribe el archivo de sesión y las cookies en CADA petición, vaciándolos primero.
 # Si el proceso muere a mitad (pausa, cancelación, apagado, corte de luz), la sesión queda vacía o
 # rota y hay que volver a iniciar sesión. Se escribe a un temporal y se sustituye de golpe.
+#
+# Ese JSON guarda el session token y el trust token; las cookies, el resto de la autenticación.
+# open() pide 0666 y create_dir_all/makedirs heredan el umask: con 022 el directorio queda en 0755
+# y los archivos en 0644. El makedirs(..., 0o700, exist_ok=True) de pyicloud no corrige un
+# directorio que ya existe. El modo se fija aquí (0700 / 0600), sin depender del umask.
+
+_MODO_DIRECTORIO = 0o700
+_MODO_ARCHIVO = 0o600
+
+
+def _aplicar_modo(ruta: str, modo: int, directorio: bool) -> None:
+    """Deja `ruta` en `modo` si está más abierta. No sigue enlaces simbólicos ni abre permisos."""
+    if os.name != "posix" or not ruta:
+        return
+    try:
+        st = os.lstat(ruta)
+    except OSError:
+        return
+    if directorio:
+        if not stat.S_ISDIR(st.st_mode):
+            return
+    elif not stat.S_ISREG(st.st_mode):
+        return
+    if (st.st_mode & 0o777) & ~modo:
+        os.chmod(ruta, modo)
+
+
+def asegurar_directorio_sesion(ruta: str) -> None:
+    """Crea el directorio de sesión en 0700 y aprieta los secretos que ya contenga."""
+    os.makedirs(ruta, mode=_MODO_DIRECTORIO, exist_ok=True)
+    _aplicar_modo(ruta, _MODO_DIRECTORIO, True)
+    if os.name != "posix":
+        return
+    for nombre in os.listdir(ruta):
+        _aplicar_modo(os.path.join(ruta, nombre), _MODO_ARCHIVO, False)
+
+
+def _crear_privado(ruta: str) -> None:
+    """Crea o trunca un archivo vacío en 0600. El umask solo puede quitar bits, no añadirlos."""
+    fd = os.open(ruta, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, _MODO_ARCHIVO)
+    try:
+        if os.name == "posix":
+            os.chmod(ruta, _MODO_ARCHIVO)
+    finally:
+        os.close(fd)
+
 
 def _reemplazar(tmp: str, ruta: str) -> None:
     # En Windows, os.replace falla si otro proceso tiene el archivo abierto en ese instante.
@@ -86,7 +133,11 @@ def _reemplazar(tmp: str, ruta: str) -> None:
 @contextlib.contextmanager
 def _escribir_atomico(ruta: str, encoding: str) -> Any:
     tmp = f"{ruta}.{os.getpid()}.tmp"
+    padre = os.path.dirname(ruta)
+    if padre:
+        _aplicar_modo(padre, _MODO_DIRECTORIO, True)
     try:
+        _crear_privado(tmp)
         with open(tmp, "w", encoding=encoding) as f:
             yield f
             f.flush()
@@ -95,6 +146,8 @@ def _escribir_atomico(ruta: str, encoding: str) -> Any:
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+        # Si el reemplazo no llegó a hacerse, el archivo anterior tampoco se queda en 0644.
+        _aplicar_modo(ruta, _MODO_ARCHIVO, False)
 
 
 def abrir_sesion(ruta: str, modo: str = "r", *args: Any, **kwargs: Any) -> Any:
@@ -109,12 +162,18 @@ class TarroAtomico(http.cookiejar.LWPCookieJar):
              ignore_expires: bool = False) -> None:
         ruta = filename or self.filename
         tmp = f"{ruta}.{os.getpid()}.tmp"
+        padre = os.path.dirname(ruta or "")
+        if padre:
+            _aplicar_modo(padre, _MODO_DIRECTORIO, True)
         try:
+            _crear_privado(tmp)
             super().save(tmp, ignore_discard, ignore_expires)
             _reemplazar(tmp, ruta)
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
+            if ruta:
+                _aplicar_modo(ruta, _MODO_ARCHIVO, False)
 
 
 def activar_escrituras_atomicas() -> None:
@@ -401,6 +460,8 @@ class Puente:
 
     def _fabrica_real(self, password: Optional[str]) -> Any:
         # "com" (todo el mundo) o "cn" (iCloud de China continental).
+        # Antes del makedirs(exist_ok=True) de pyicloud, que no cierra un directorio ya creado.
+        asegurar_directorio_sesion(self.cookies)
         return PyiCloudService(self.dominio, self.apple_id, lambda: password, cookie_directory=self.cookies)
 
     def conectar(self, password: Optional[str] = None) -> Any:
@@ -704,6 +765,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     activar_escrituras_atomicas()
+    asegurar_directorio_sesion(args.cookies)
     puente = Puente(args.apple_id, args.cookies, dominio=args.dominio)
     for linea in io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8"):
         linea = linea.strip()

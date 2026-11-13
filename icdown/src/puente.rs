@@ -48,6 +48,69 @@ fn comando_de(ruta: &str) -> Command {
     }
 }
 
+/// Directorio de la sesión de iCloud (JSON con session token y trust token, y cookies).
+///
+/// `create_dir_all` usa el modo `0777` enmascarado por el umask: con `022` queda en `0755`,
+/// y otro usuario local puede leer los secretos si los padres se pueden atravesar. pyicloud
+/// después hace `makedirs(..., 0o700, exist_ok=True)`, que no cambia un directorio ya creado.
+/// Aquí el directorio queda en `0700` y los archivos que ya hubiera, si están más abiertos, en `0600`.
+fn asegurar_permisos_sesion(dir: &Path) -> std::io::Result<()> {
+    if !dir.is_dir() {
+        if let Some(padre) = dir.parent() {
+            if !padre.as_os_str().is_empty() {
+                std::fs::create_dir_all(padre)?;
+            }
+        }
+        match crear_directorio_sesion(dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && dir.is_dir() => {}
+            Err(e) => return Err(e),
+        }
+    }
+    #[cfg(unix)]
+    cerrar_directorio_y_archivos(dir)?;
+    Ok(())
+}
+
+fn crear_directorio_sesion(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().mode(0o700).create(dir)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(dir)
+    }
+}
+
+/// Quita bits de más. Un modo ya más cerrado (p. ej. `0400`) se deja igual.
+#[cfg(unix)]
+fn cerrar_si_mas_abierto(path: &Path, modo: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let meta = std::fs::metadata(path)?;
+    let actual = meta.permissions().mode() & 0o777;
+    if actual & !modo != 0 {
+        let mut permisos = meta.permissions();
+        permisos.set_mode(modo);
+        std::fs::set_permissions(path, permisos)?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn cerrar_directorio_y_archivos(dir: &Path) -> std::io::Result<()> {
+    cerrar_si_mas_abierto(dir, 0o700)?;
+    for entrada in std::fs::read_dir(dir)? {
+        let entrada = entrada?;
+        // `file_type` no sigue enlaces: no se cambia el destino de un atajo.
+        if entrada.file_type()?.is_file() {
+            cerrar_si_mas_abierto(&entrada.path(), 0o600)?;
+        }
+    }
+    Ok(())
+}
+
 fn comprobar(v: &Value) -> Result<(), ErrorFuente> {
     if v["ok"].as_bool() == Some(true) {
         return Ok(());
@@ -74,7 +137,9 @@ impl Puente {
     }
 
     pub fn iniciar_con(mut cmd: Command, apple_id: &str, dir_sesion: &Path, log: &Path) -> anyhow::Result<Puente> {
-        std::fs::create_dir_all(dir_sesion)?;
+        // El directorio lo crea este proceso, antes de que pyicloud haga
+        // makedirs(..., 0o700, exist_ok=True). Ese makedirs no corrige uno que ya existe.
+        asegurar_permisos_sesion(dir_sesion)?;
         if let Some(p) = log.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -214,5 +279,97 @@ impl Drop for Puente {
     fn drop(&mut self) {
         let _ = self.hijo.kill();
         let _ = self.hijo.wait();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod pruebas_permisos {
+    use super::asegurar_permisos_sesion;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn modo(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    fn poner_modo(path: &std::path::Path, modo: u32) {
+        let mut permisos = std::fs::metadata(path).unwrap().permissions();
+        permisos.set_mode(modo);
+        std::fs::set_permissions(path, permisos).unwrap();
+    }
+
+    #[test]
+    fn directorio_nuevo_queda_en_0700() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("sesion");
+        asegurar_permisos_sesion(&dir).unwrap();
+        assert_eq!(modo(&dir), 0o700);
+    }
+
+    #[test]
+    fn directorio_y_secretos_abiertos_se_cierran_sin_tocar_el_contenido() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("sesion");
+        std::fs::create_dir(&dir).unwrap();
+        poner_modo(&dir, 0o755);
+
+        let sesion = dir.join("yoejemplocom.session");
+        let cuerpo = br#"{"session_token":"s","trust_token":"t"}"#;
+        std::fs::write(&sesion, cuerpo).unwrap();
+        poner_modo(&sesion, 0o644);
+
+        let cookies = dir.join("yoejemplocom");
+        std::fs::write(&cookies, b"#LWP-Cookies-2.0\n").unwrap();
+        poner_modo(&cookies, 0o644);
+
+        let fuera = base.path().join("fuera");
+        std::fs::write(&fuera, b"no").unwrap();
+        poner_modo(&fuera, 0o644);
+        std::os::unix::fs::symlink(&fuera, dir.join("atajo")).unwrap();
+
+        asegurar_permisos_sesion(&dir).unwrap();
+
+        assert_eq!(modo(&dir), 0o700);
+        assert_eq!(modo(&sesion), 0o600);
+        assert_eq!(modo(&cookies), 0o600);
+        assert_eq!(std::fs::read(&sesion).unwrap(), cuerpo);
+        assert_eq!(modo(&fuera), 0o644);
+    }
+
+    #[test]
+    fn iniciar_con_cierra_directorio_y_json_ya_abiertos() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("sesion");
+        std::fs::create_dir(&dir).unwrap();
+        poner_modo(&dir, 0o755);
+        let sesion = dir.join("yo.session");
+        std::fs::write(&sesion, br#"{"session_token":"s","trust_token":"t"}"#).unwrap();
+        poner_modo(&sesion, 0o644);
+
+        let puente = super::Puente::iniciar_con(
+            std::process::Command::new("/bin/true"),
+            "yo@ejemplo.com",
+            &dir,
+            &base.path().join("puente.log"),
+        )
+        .unwrap();
+        assert_eq!(modo(&dir), 0o700);
+        assert_eq!(modo(&sesion), 0o600);
+        assert_eq!(std::fs::read(&sesion).unwrap(), br#"{"session_token":"s","trust_token":"t"}"#);
+        drop(puente);
+    }
+
+    #[test]
+    fn un_archivo_mas_cerrado_no_se_abre() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = base.path().join("sesion");
+        std::fs::create_dir(&dir).unwrap();
+        let archivo = dir.join("ya.session");
+        std::fs::write(&archivo, b"{}").unwrap();
+        poner_modo(&archivo, 0o400);
+
+        asegurar_permisos_sesion(&dir).unwrap();
+
+        assert_eq!(modo(&archivo), 0o400);
+        assert_eq!(modo(&dir), 0o700);
     }
 }

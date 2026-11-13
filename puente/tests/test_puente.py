@@ -750,6 +750,8 @@ def test_escritura_de_sesion_a_medias_no_destruye_la_anterior(tmp_path):
     with pi.abrir_sesion(str(ruta), "w", encoding="utf-8") as f:
         json.dump({"session_token": "nuevo"}, f)
     assert json.loads(ruta.read_text(encoding="utf-8")) == {"session_token": "nuevo"}
+    if os.name == "posix":
+        assert (ruta.stat().st_mode & 0o777) == 0o600
 
 
 def test_cookies_se_guardan_de_forma_atomica(tmp_path):
@@ -763,6 +765,65 @@ def test_cookies_se_guardan_de_forma_atomica(tmp_path):
     otro.load(ignore_discard=True, ignore_expires=True)
     assert [c.name for c in otro] == ["X-APPLE-WEBAUTH-TOKEN"]
     assert list(tmp_path.iterdir()) == [ruta]
+    if os.name == "posix":
+        assert (ruta.stat().st_mode & 0o777) == 0o600
+
+
+def _modo(ruta) -> int:
+    return ruta.stat().st_mode & 0o777
+
+
+@pytest.mark.skipif(os.name != "posix", reason="los permisos Unix no aplican en Windows")
+def test_sesion_queda_privada_aunque_el_umask_sea_abierto(tmp_path):
+    """umask 022 (y 000) no puede dejar el directorio en 0755 ni el JSON en 0644."""
+    anterior = os.umask(0o022)
+    try:
+        destino = tmp_path / "sesion"
+        destino.mkdir()
+        os.chmod(destino, 0o755)
+        sesion = destino / "yoejemplocom.session"
+        sesion.write_text('{"session_token": "s", "trust_token": "t"}', encoding="utf-8")
+        os.chmod(sesion, 0o644)
+        cookies = destino / "yoejemplocom"
+        cookies.write_text("#LWP-Cookies-2.0\n", encoding="utf-8")
+        os.chmod(cookies, 0o644)
+        cerrado = destino / "ya.session"
+        cerrado.write_text("{}", encoding="utf-8")
+        os.chmod(cerrado, 0o400)
+        fuera = tmp_path / "fuera"
+        fuera.write_text("no", encoding="utf-8")
+        os.chmod(fuera, 0o644)
+        (destino / "atajo").symlink_to(fuera)
+
+        pi.asegurar_directorio_sesion(str(destino))
+
+        assert _modo(destino) == 0o700
+        assert _modo(sesion) == 0o600
+        assert json.loads(sesion.read_text(encoding="utf-8"))["trust_token"] == "t"
+        assert _modo(cookies) == 0o600
+        assert _modo(cerrado) == 0o400
+        assert _modo(fuera) == 0o644
+
+        os.umask(0)
+        nuevo = tmp_path / "nueva"
+        pi.asegurar_directorio_sesion(str(nuevo))
+        assert _modo(nuevo) == 0o700
+        escrita = nuevo / "cuenta.session"
+        with pi.abrir_sesion(str(escrita), "w", encoding="utf-8") as f:
+            json.dump({"session_token": "nuevo", "trust_token": "tt"}, f)
+        assert _modo(escrita) == 0o600
+        assert json.loads(escrita.read_text(encoding="utf-8"))["trust_token"] == "tt"
+
+        tarro_ruta = nuevo / "cuenta"
+        tarro = pi.TarroAtomico(filename=str(tarro_ruta))
+        import http.cookiejar
+        tarro.set_cookie(http.cookiejar.Cookie(
+            0, "X-APPLE-WEBAUTH-TOKEN", "v", None, False, ".icloud.com", True, True,
+            "/", True, True, None, False, None, None, {}))
+        tarro.save(ignore_discard=True, ignore_expires=True)
+        assert _modo(tarro_ruta) == 0o600
+    finally:
+        os.umask(anterior)
 
 
 def test_escrituras_atomicas_se_aplican_a_pyicloud(monkeypatch):
